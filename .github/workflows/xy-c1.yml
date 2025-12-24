@@ -290,7 +290,7 @@ jobs:
         echo "CONFIG_FIRMWARE_INCLUDE_XUPNPD=y" >> .config
 
         ##包含 Minidlna UPnP 媒体服务器。约 1.6MB
-        echo "CONFIG_FIRMWARE_INCLUDE_MINIDLNA=y" >> .config
+        echo "CONFIG_FIRMWARE_INCLUDE_MINIDLNA=n" >> .config
 
         ##包含 Firefly iTunes 媒体服务器。约 1.0MB 
         echo "CONFIG_FIRMWARE_INCLUDE_FIREFLY=n" >> .config
