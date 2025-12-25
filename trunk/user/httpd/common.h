@@ -83,8 +83,8 @@ typedef u_int8_t u8;
 
 //如果你要修改的话 请注意后面的序号，每个插件对应的序号不能相同  不能超过63 你可以删掉不需要的 把序号给你需要的插件
 //#define EVM_RESTART_NFSD			(1ULL << 38) //nfsd文件系统
-#define EVM_RESTART_EASYTIER		(1ULL << 38) // Easyier异地组网
-//#define EVM_RESTART_TRMD			(1ULL << 38) //#TRANSMISSION
+//#define EVM_RESTART_EASYTIER		(1ULL << 38) // Easyier异地组网
+#define EVM_RESTART_TRMD			(1ULL << 38) //TRANSMISSION
 #define EVM_RESTART_DMS				(1ULL << 39) //Minidlna UPnP 媒体服务器
 #define EVM_RESTART_ITUNES			(1ULL << 40) //Firefly iTunes 媒体服务器
 #define EVM_RESTART_CLOUDFLARE			(1ULL << 41)  //CF的ddns
