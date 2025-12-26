@@ -1,168 +1,122 @@
 #!/bin/sh
-#
-# Padavan Native Cloudflare DDNS
-# Compatible with Advanced_cloudflare.asp (NO ASP MOD REQUIRED)
-#
+# Padavan Cloudflare DDNS (final)
+# compatible with Advanced_cloudflare.asp
 
-LOGGER="cloudflare-ddns"
-API="https://api.cloudflare.com/client/v4"
+BIN="/usr/bin/cloudflare.sh"
+LOG="/tmp/cloudflare.log"
+PID="/var/run/cloudflare.pid"
 
-BIN_NAME="cloudflare.sh"
-
-#################################
-# Utils
-#################################
+UA="Padavan-Cloudflare-DDNS"
 
 log() {
-    logger -t "$LOGGER" "$@"
+	echo "[$(date '+%F %T')] $*" >> $LOG
 }
 
-get_wan_ipv4() {
-    curl -s --connect-timeout 5 https://api.ipify.org
+nv() { nvram get "$1"; }
+
+get_ip4() {
+	curl -s --max-time 5 https://ipv4.icanhazip.com | tr -d '\n'
 }
 
-get_wan_ipv6() {
-    ip -6 addr show scope global 2>/dev/null | grep inet6 | awk '{print $2}' | cut -d/ -f1 | head -n1
+get_ip6() {
+	ip -6 addr show scope global 2>/dev/null | awk '/inet6/{print $2}' | cut -d/ -f1 | head -n1
 }
 
-#################################
-# Auth Header
-#################################
-
-build_auth() {
-    CF_TOKEN="$(nvram get cloudflare_token)"
-    CF_EMAIL="$(nvram get cloudflare_Email)"
-    CF_KEY="$(nvram get cloudflare_Key)"
-
-    if [ -n "$CF_TOKEN" ]; then
-        AUTH_H="-H Authorization:\ Bearer\ $CF_TOKEN"
-    elif [ -n "$CF_EMAIL" ] && [ -n "$CF_KEY" ]; then
-        AUTH_H="-H X-Auth-Email:\ $CF_EMAIL -H X-Auth-Key:\ $CF_KEY"
-    else
-        log "No Cloudflare API auth configured"
-        return 1
-    fi
-    return 0
+cf_auth() {
+	if [ -n "$(nv cloudflare_token)" ]; then
+		echo "-H Authorization: Bearer $(nv cloudflare_token)"
+	else
+		echo "-H X-Auth-Email: $(nv cloudflare_Email) -H X-Auth-Key: $(nv cloudflare_Key)"
+	fi
 }
 
-#################################
-# Zone & Record
-#################################
+cf_api() {
+	curl -s -X "$1" "https://api.cloudflare.com/client/v4$2" \
+		-H "Content-Type: application/json" \
+		$(cf_auth) \
+		${3:+--data "$3"}
+}
 
 get_zone_id() {
-    ZONE="$1"
-    eval curl -s $AUTH_H "$API/zones?name=$ZONE" \
-        | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -n1
+	DOMAIN="$1"
+	cf_api GET "/zones?name=$DOMAIN" | sed -n 's/.*"id":"\([^"]*\)".*"name":"'"$DOMAIN"'".*/\1/p'
 }
 
 get_record_id() {
-    ZONE_ID="$1"
-    NAME="$2"
-    TYPE="$3"
-    eval curl -s $AUTH_H "$API/zones/$ZONE_ID/dns_records?type=$TYPE&name=$NAME" \
-        | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -n1
-}
-
-create_record() {
-    ZONE_ID="$1"
-    NAME="$2"
-    TYPE="$3"
-    IP="$4"
-
-    log "Creating $TYPE record $NAME -> $IP"
-
-    eval curl -s -X POST $AUTH_H \
-        -H Content-Type:\ application/json \
-        --data "{\"type\":\"$TYPE\",\"name\":\"$NAME\",\"content\":\"$IP\",\"ttl\":120,\"proxied\":false}" \
-        "$API/zones/$ZONE_ID/dns_records" >/dev/null
+	ZONE="$1"; TYPE="$2"; NAME="$3"
+	cf_api GET "/zones/$ZONE/dns_records?type=$TYPE&name=$NAME" \
+	| sed -n 's/.*"id":"\([^"]*\)".*/\1/p'
 }
 
 update_record() {
-    ZONE_ID="$1"
-    RID="$2"
-    TYPE="$3"
-    NAME="$4"
-    IP="$5"
+	TYPE="$1"; HOST="$2"; DOMAIN="$3"; IP="$4"
+	FQDN="$HOST.$DOMAIN"
 
-    log "Updating $TYPE record $NAME -> $IP"
+	ZONE_ID=$(get_zone_id "$DOMAIN")
+	[ -z "$ZONE_ID" ] && log "Zone not found: $DOMAIN" && return 1
 
-    eval curl -s -X PUT $AUTH_H \
-        -H Content-Type:\ application/json \
-        --data "{\"type\":\"$TYPE\",\"name\":\"$NAME\",\"content\":\"$IP\",\"ttl\":120,\"proxied\":false}" \
-        "$API/zones/$ZONE_ID/dns_records/$RID" >/dev/null
+	RECORD_ID=$(get_record_id "$ZONE_ID" "$TYPE" "$FQDN")
+
+	DATA="{\"type\":\"$TYPE\",\"name\":\"$FQDN\",\"content\":\"$IP\",\"ttl\":120,\"proxied\":false}"
+
+	if [ -z "$RECORD_ID" ]; then
+		log "Creating $TYPE $FQDN -> $IP"
+		cf_api POST "/zones/$ZONE_ID/dns_records" "$DATA" >> $LOG
+	else
+		log "Updating $TYPE $FQDN -> $IP"
+		cf_api PUT "/zones/$ZONE_ID/dns_records/$RECORD_ID" "$DATA" >> $LOG
+	fi
 }
 
-#################################
-# Update Logic
-#################################
+ddns_update() {
+	[ "$(nv cloudflare_enable)" != "1" ] && return
 
-update_one() {
-    HOST="$1"
-    DOMAIN="$2"
-    TYPE="$3"
-    IP="$4"
+	IP4=$(get_ip4)
+	[ -n "$(nv cloudflare_domian)" ] && [ -n "$(nv cloudflare_host)" ] && \
+		update_record A "$(nv cloudflare_host)" "$(nv cloudflare_domian)" "$IP4"
 
-    [ -z "$HOST" ] || [ -z "$DOMAIN" ] || [ -z "$IP" ] && return
+	if [ -n "$(nv cloudflare_domian6)" ] && [ -n "$(nv cloudflare_host6)" ]; then
+		IP6=$(get_ip6)
+		[ -n "$IP6" ] && update_record AAAA "$(nv cloudflare_host6)" "$(nv cloudflare_domian6)" "$IP6"
+	fi
 
-    NAME="$HOST.$DOMAIN"
-
-    ZONE_ID="$(get_zone_id "$DOMAIN")"
-    [ -z "$ZONE_ID" ] && log "Zone not found: $DOMAIN" && return
-
-    RID="$(get_record_id "$ZONE_ID" "$NAME" "$TYPE")"
-
-    if [ -z "$RID" ]; then
-        create_record "$ZONE_ID" "$NAME" "$TYPE" "$IP"
-    else
-        update_record "$ZONE_ID" "$RID" "$TYPE" "$NAME" "$IP"
-    fi
+	nvram set cloudflare_last_ip="$IP4"
+	nvram set cloudflare_last_update="$(date '+%F %T')"
 }
-
-#################################
-# Main Loop
-#################################
 
 daemon() {
-    INTERVAL="$(nvram get cloudflare_interval)"
-    [ -z "$INTERVAL" ] && INTERVAL=600
+	echo $$ > $PID
+	log "Cloudflare DDNS daemon started"
 
-    while [ "$(nvram get cloudflare_enable)" = "1" ]; do
-        build_auth || sleep "$INTERVAL"
+	while [ "$(nv cloudflare_enable)" = "1" ]; do
+		ddns_update
+		sleep "$(nv cloudflare_interval 2>/dev/null || echo 600)"
+	done
 
-        IPV4="$(get_wan_ipv4)"
-        IPV6="$(get_wan_ipv6)"
-
-        update_one "$(nvram get cloudflare_host)"  "$(nvram get cloudflare_domian)"  "A"    "$IPV4"
-        update_one "$(nvram get cloudflare_host2)" "$(nvram get cloudflare_domian2)" "A"    "$IPV4"
-        update_one "$(nvram get cloudflare_host6)" "$(nvram get cloudflare_domian6)" "AAAA" "$IPV6"
-
-        [ -n "$IPV4" ] && nvram set cloudflare_last_ip="$IPV4"
-        [ -n "$IPV6" ] && nvram set cloudflare_last_ipv6="$IPV6"
-        nvram set cloudflare_last_update="$(date '+%Y-%m-%d %H:%M:%S')"
-        nvram commit
-
-        sleep "$INTERVAL"
-    done
+	log "Cloudflare DDNS daemon stopped"
+	rm -f $PID
 }
 
-#################################
-# Control
-#################################
-
 case "$1" in
-    start)
-        killall "$BIN_NAME" 2>/dev/null
-        daemon &
-        ;;
-    stop)
-        killall "$BIN_NAME" 2>/dev/null
-        ;;
-    restart)
-        $0 stop
-        sleep 1
-        $0 start
-        ;;
-    *)
-        echo "Usage: $0 {start|stop|restart}"
-        ;;
+	start)
+		[ -f $PID ] && exit 0
+		$BIN daemon &
+		;;
+	stop)
+		[ -f $PID ] && kill "$(cat $PID)" && rm -f $PID
+		;;
+	restart)
+		$BIN stop
+		sleep 1
+		$BIN start
+		;;
+	update)
+		ddns_update
+		;;
+	daemon)
+		daemon
+		;;
+	*)
+		echo "Usage: $BIN {start|stop|restart|update}"
+		;;
 esac
