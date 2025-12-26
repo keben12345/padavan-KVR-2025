@@ -1,105 +1,89 @@
 #!/bin/sh
-# Padavan Cloudflare DDNS (IPv4)
-# Path: /usr/bin/cloudflare.sh
+#
+# Padavan Native Cloudflare DDNS
+#
 
+BIN="/usr/bin/cloudflare.sh"
 LOG="/tmp/cloudflare.log"
 PID="/var/run/cloudflare.pid"
 
-# ===== 从 nvram 读取 =====
+### ====== NVRAM ======
 ENABLE="$(nvram get cloudflare_enable)"
 INTERVAL="$(nvram get cloudflare_interval)"
 TOKEN="$(nvram get cloudflare_token)"
-EMAIL="$(nvram get cloudflare_Email)"
-GLOBAL_KEY="$(nvram get cloudflare_Key)"
-
+DOMAIN="$(nvram get cloudflare_domain)"
 HOST="$(nvram get cloudflare_host)"
-DOMAIN="$(nvram get cloudflare_domian)"
+
+# 兼容历史拼写错误
+[ -z "$DOMAIN" ] && DOMAIN="$(nvram get cloudflare_domian)"
 
 [ -z "$INTERVAL" ] && INTERVAL=600
+[ -z "$HOST" ] && HOST="@"
 
-API="https://api.cloudflare.com/client/v4"
+RECORD_NAME="$HOST.$DOMAIN"
+[ "$HOST" = "@" ] && RECORD_NAME="$DOMAIN"
 
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> $LOG
 }
 
-auth_header() {
-    if [ -n "$TOKEN" ]; then
-        echo "-H Authorization: Bearer $TOKEN"
-    else
-        echo "-H X-Auth-Email: $EMAIL -H X-Auth-Key: $GLOBAL_KEY"
-    fi
-}
-
-get_ipv4() {
+get_wan_ip() {
     curl -k -s https://ipv4.icanhazip.com | tr -d '\n'
 }
 
 get_zone_id() {
-    curl -k -s $(auth_header) \
-        "$API/zones?name=$DOMAIN" |
-        sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -n1
+    curl -k -s -H "Authorization: Bearer $TOKEN" \
+        "https://api.cloudflare.com/client/v4/zones?name=$DOMAIN" \
+    | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -n1
 }
 
 get_record_id() {
-    curl -k -s $(auth_header) \
-        "$API/zones/$ZONE_ID/dns_records?type=A&name=$FQDN" |
-        sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -n1
+    curl -k -s -H "Authorization: Bearer $TOKEN" \
+        "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?type=A&name=$RECORD_NAME" \
+    | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -n1
 }
 
 create_record() {
-    curl -k -s -X POST $(auth_header) \
+    log "Creating DNS record $RECORD_NAME"
+    curl -k -s -X POST \
+        -H "Authorization: Bearer $TOKEN" \
         -H "Content-Type: application/json" \
-        "$API/zones/$ZONE_ID/dns_records" \
-        --data "{\"type\":\"A\",\"name\":\"$FQDN\",\"content\":\"$IP\",\"ttl\":1,\"proxied\":false}" \
+        "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+        --data "{\"type\":\"A\",\"name\":\"$RECORD_NAME\",\"content\":\"$WAN_IP\",\"ttl\":1,\"proxied\":false}" \
         | grep -q '"success":true'
 }
 
 update_record() {
-    curl -k -s -X PUT $(auth_header) \
+    curl -k -s -X PUT \
+        -H "Authorization: Bearer $TOKEN" \
         -H "Content-Type: application/json" \
-        "$API/zones/$ZONE_ID/dns_records/$RECORD_ID" \
-        --data "{\"type\":\"A\",\"name\":\"$FQDN\",\"content\":\"$IP\",\"ttl\":1,\"proxied\":false}" \
+        "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$RECORD_ID" \
+        --data "{\"type\":\"A\",\"name\":\"$RECORD_NAME\",\"content\":\"$WAN_IP\",\"ttl\":1,\"proxied\":false}" \
         | grep -q '"success":true'
 }
 
 ddns_update() {
-    IP="$(get_ipv4)"
-    [ -z "$IP" ] && log "Failed to get public IP" && return
-
-    FQDN="$HOST.$DOMAIN"
+    WAN_IP="$(get_wan_ip)"
+    [ -z "$WAN_IP" ] && log "Failed to get WAN IP" && return
 
     ZONE_ID="$(get_zone_id)"
-    if [ -z "$ZONE_ID" ]; then
-        log "Zone not found: $DOMAIN"
-        return
-    fi
+    [ -z "$ZONE_ID" ] && log "Zone not found: $DOMAIN" && return
 
     RECORD_ID="$(get_record_id)"
-
     if [ -z "$RECORD_ID" ]; then
-        log "Record not found, creating: $FQDN"
-        create_record || { log "Create record failed"; return; }
+        create_record || { log "Failed to create DNS record"; return; }
         RECORD_ID="$(get_record_id)"
     fi
 
-    update_record || { log "Update record failed"; return; }
-
-    nvram set cloudflare_last_ip="$IP"
-    nvram set cloudflare_last_time="$(date '+%Y-%m-%d %H:%M:%S')"
-    nvram commit
-
-    log "Updated $FQDN -> $IP"
+    update_record && log "Updated $RECORD_NAME -> $WAN_IP"
 }
 
 daemon() {
     log "Cloudflare DDNS daemon started"
-    while [ "$ENABLE" = "1" ]; do
+    while true; do
         ddns_update
         sleep "$INTERVAL"
-        ENABLE="$(nvram get cloudflare_enable)"
     done
-    log "Cloudflare DDNS daemon stopped"
 }
 
 start() {
@@ -110,12 +94,12 @@ start() {
 }
 
 stop() {
-    [ -f "$PID" ] && kill "$(cat $PID)" 2>/dev/null && rm -f "$PID"
+    [ -f "$PID" ] && kill "$(cat $PID)" && rm -f "$PID"
 }
 
 case "$1" in
     start) start ;;
     stop) stop ;;
     restart) stop; start ;;
-    *) echo "Usage: $0 {start|stop|restart}" ;;
+    *) echo "Usage: $BIN {start|stop|restart}" ;;
 esac
