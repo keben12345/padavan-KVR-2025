@@ -436,7 +436,7 @@ jobs:
         #########################################################################################
         sudo ./clear_tree
         sudo ./build_firmware_modify $TNAME 0
-        sudo mv -f images/*.trx /opt/images/K2P-USB-32M-512M_3.4.3.9-099.trx
+        sudo mv -f images/*.trx /opt/images/XY-C1-USB-32M-512M_3.4.3.9-099.trx
         cp -f .config /opt/images/${TNAME}-32M-512M.config
         echo "build_time=$(date '+%Y年%m月%d日%H:%M:%S' | jq -sRr @uri)" >> $GITHUB_ENV
         echo "tag=$(date '+%Y-%m-%d')" >> $GITHUB_ENV
