@@ -109,7 +109,7 @@ jobs:
         sed -i '/CONFIG_FIRMWARE_INCLUDE_FIREFLY/d' .config
         sed -i '/CONFIG_FIRMWARE_INCLUDE_FFMPEG_NEW/d' .config
         sed -i '/CONFIG_FIRMWARE_INCLUDE_EASYTIER/d' .config
-        
+        sed -i '/CONFIG_FIRMWARE_INCLUDE_V2RAYA/d' .config
         sed -i '/CONFIG_FIRMWARE_INCLUDE_TRANSMISSION/d' .config
         sed -i '/CONFIG_FIRMWARE_INCLUDE_TRANSMISSION_WEB_CONTROL/d' .config
         sed -i '/CONFIG_FIRMWARE_INCLUDE_ARIA/d' .config
@@ -398,7 +398,7 @@ jobs:
         echo "CONFIG_FIRMWARE_INCLUDE_ZEROTIER=y" >> .config ## zerotier 约 20k
         echo "CONFIG_FIRMWARE_INCLUDE_ALIDDNS=y" >> .config #阿里DDNS ~20k
         echo "CONFIG_FIRMWARE_INCLUDE_DDNSTO=n" >> .config #ddnsto 约800k  已删除 请查看/trunk/user/httpd/common.h
-        echo "CONFIG_FIRMWARE_INCLUDE_TAILSCALE=y" >> .config #tailscale 约20k
+        ##echo "CONFIG_FIRMWARE_INCLUDE_TAILSCALE=n" >> .config #tailscale 约20k
         echo "CONFIG_FIRMWARE_INCLUDE_NATPIERCE=y" >> .config #皎月连 约20k
         echo "CONFIG_FIRMWARE_INCLUDE_VNTCLI=y" >> .config #vnt客户端 约80k
         echo "CONFIG_FIRMWARE_INCLUDE_VNTS=y" >> .config #vnt服务端 约50k
@@ -424,7 +424,7 @@ jobs:
         echo "CONFIG_FIRMWARE_INCLUDE_MSD_LITE=y" >> .config #MSD_LITE工具
         
 
-        #echo "CONFIG_FIRMWARE_INCLUDE_V2RAYA=n" >> .config #v2raya 已删除 /trunk/user/httpd/common.h
+        echo "CONFIG_FIRMWARE_INCLUDE_V2RAYA=y" >> .config #v2raya 已删除 /trunk/user/httpd/common.h
         #echo "CONFIG_FIRMWARE_INCLUDE_NVPPROXY=n" >> .config #NVPPROXY 已删除 请查看/trunk/user/httpd/common.h
         ##科学上网## 已删除 /trunk/user/httpd/common.h
         #echo "CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=n" >> .config #SS plus+ 科学上网插件
