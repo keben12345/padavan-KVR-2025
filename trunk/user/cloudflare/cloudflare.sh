@@ -1,154 +1,191 @@
 #!/bin/sh
+#
 # Padavan Native Cloudflare DDNS
-# Final Release Version
+# A + AAAA, auto create, auto cleanup duplicates
+#
 
-BIN="/usr/bin/cloudflare.sh"
-LOG="/tmp/cloudflare.log"
-PID="/var/run/cloudflare.pid"
+BIN_NAME="cloudflare.sh"
+LOG_FILE="/tmp/cloudflare.log"
 
-# ===== 从 nvram 读取配置 =====
-ENABLE="$(nvram get cloudflare_enable)"
-INTERVAL="$(nvram get cloudflare_interval)"
+################################
+# Utils
+################################
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
+}
+
+cf_api() {
+    METHOD="$1"
+    URI="$2"
+    DATA="$3"
+
+    if [ -n "$DATA" ]; then
+        curl -k -s -X "$METHOD" \
+            -H "Authorization: Bearer $CF_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "$DATA" \
+            "https://api.cloudflare.com/client/v4$URI"
+    else
+        curl -k -s -X "$METHOD" \
+            -H "Authorization: Bearer $CF_TOKEN" \
+            "https://api.cloudflare.com/client/v4$URI"
+    fi
+}
+
+################################
+# NVRAM
+################################
+
+CF_ENABLE="$(nvram get cloudflare_enable)"
 CF_TOKEN="$(nvram get cloudflare_token)"
-CF_EMAIL="$(nvram get cloudflare_email)"
-HOST="$(nvram get cloudflare_host)"
 DOMAIN="$(nvram get cloudflare_domain)"
+HOST="$(nvram get cloudflare_host)"
+INTERVAL="$(nvram get cloudflare_interval)"
 
 [ -z "$INTERVAL" ] && INTERVAL=600
 [ -z "$HOST" ] && HOST="@"
 
-FQDN="$HOST.$DOMAIN"
+################################
+# IP functions
+################################
 
-log() {
-    echo "[$(date '+%F %T')] $*" >> "$LOG"
-}
-
-get_wan_ip() {
+get_ipv4() {
     curl -k -s https://ipv4.icanhazip.com | tr -d '\n'
 }
 
-get_zone_id() {
-    ZONE_ID=$(curl -k -s \
-        -H "Authorization: Bearer $CF_TOKEN" \
-        "https://api.cloudflare.com/client/v4/zones?name=$DOMAIN" \
-        | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+get_ipv6() {
+    ip -6 addr show dev ppp0 2>/dev/null \
+    | awk '/inet6/{print $2}' \
+    | grep -v '^fe80' \
+    | head -n1 \
+    | cut -d/ -f1
+}
 
-    [ -z "$ZONE_ID" ] && return 1
-    return 0
+################################
+# Cloudflare functions
+################################
+
+get_zone_id() {
+    ZONE_ID="$(cf_api GET "/zones?name=$DOMAIN" \
+        | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -n1)"
 }
 
 get_record_ids() {
-    curl -k -s \
-        -H "Authorization: Bearer $CF_TOKEN" \
-        "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?type=A&name=$FQDN" \
-        | grep -o '"id":"[^"]*"' | cut -d'"' -f4
+    TYPE="$1"
+    NAME="$HOST.$DOMAIN"
+    cf_api GET "/zones/$ZONE_ID/dns_records?type=$TYPE&name=$NAME" \
+        | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'
 }
 
-cleanup_duplicate_records() {
-    IDS="$(get_record_ids)"
-    COUNT=$(echo "$IDS" | wc -l)
+cleanup_duplicates() {
+    TYPE="$1"
+    IDS="$(get_record_ids "$TYPE")"
 
-    [ "$COUNT" -le 1 ] && return
-
-    KEEP_ID=$(echo "$IDS" | sed -n '1p')
-    echo "$IDS" | sed '1d' | while read rid; do
-        curl -k -s -X DELETE \
-            -H "Authorization: Bearer $CF_TOKEN" \
-            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$rid" >/dev/null
-        log "Deleted duplicate record id=$rid"
+    KEEP=1
+    for ID in $IDS; do
+        if [ "$KEEP" = "1" ]; then
+            KEEP=0
+            continue
+        fi
+        log "Deleting duplicate $TYPE record ($ID)"
+        cf_api DELETE "/zones/$ZONE_ID/dns_records/$ID"
     done
-
-    RECORD_ID="$KEEP_ID"
 }
 
 create_record() {
-    IP="$1"
-    log "Creating DNS record $FQDN"
+    TYPE="$1"
+    IP="$2"
+    NAME="$HOST.$DOMAIN"
 
-    RES=$(curl -k -s -X POST \
-        -H "Authorization: Bearer $CF_TOKEN" \
-        -H "Content-Type: application/json" \
-        "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
-        --data "{\"type\":\"A\",\"name\":\"$FQDN\",\"content\":\"$IP\",\"ttl\":1,\"proxied\":false}")
-
-    echo "$RES" | grep -q '"success":true'
+    log "Creating DNS record $NAME ($TYPE)"
+    cf_api POST "/zones/$ZONE_ID/dns_records" \
+        "{\"type\":\"$TYPE\",\"name\":\"$NAME\",\"content\":\"$IP\",\"ttl\":1,\"proxied\":false}" \
+        | grep -q '"success":true'
 }
 
 update_record() {
-    IP="$1"
-    IDS="$(get_record_ids)"
+    TYPE="$1"
+    IP="$2"
+
+    [ -z "$IP" ] && return
+
+    IDS="$(get_record_ids "$TYPE")"
 
     if [ -z "$IDS" ]; then
-        create_record "$IP" || return 1
-        IDS="$(get_record_ids)"
-    fi
-
-    cleanup_duplicate_records
-    RECORD_ID="$(get_record_ids | head -n1)"
-
-    RES=$(curl -k -s -X PUT \
-        -H "Authorization: Bearer $CF_TOKEN" \
-        -H "Content-Type: application/json" \
-        "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$RECORD_ID" \
-        --data "{\"type\":\"A\",\"name\":\"$FQDN\",\"content\":\"$IP\",\"ttl\":1,\"proxied\":false}")
-
-    echo "$RES" | grep -q '"success":true'
-}
-
-ddns_loop() {
-    log "Cloudflare DDNS daemon started"
-
-    if ! get_zone_id; then
-        log "Zone not found: $DOMAIN"
-        sleep "$INTERVAL"
+        create_record "$TYPE" "$IP" || log "Failed to create $TYPE record"
         return
     fi
 
+    ID="$(echo "$IDS" | head -n1)"
+
+    RESP="$(cf_api PUT "/zones/$ZONE_ID/dns_records/$ID" \
+        "{\"type\":\"$TYPE\",\"name\":\"$HOST.$DOMAIN\",\"content\":\"$IP\",\"ttl\":1,\"proxied\":false}")"
+
+    echo "$RESP" | grep -q '"success":true' && \
+        log "Updated $HOST.$DOMAIN ($TYPE) -> $IP"
+}
+
+################################
+# Main loop
+################################
+
+run_ddns() {
+    get_zone_id
+    [ -z "$ZONE_ID" ] && log "Zone not found: $DOMAIN" && return
+
+    cleanup_duplicates A
+    cleanup_duplicates AAAA
+
+    IPV4="$(get_ipv4)"
+    IPV6="$(get_ipv6)"
+
+    LAST_IPV4="$(nvram get cloudflare_last_ipv4)"
+    LAST_IPV6="$(nvram get cloudflare_last_ipv6)"
+
+    if [ "$IPV4" != "$LAST_IPV4" ]; then
+        update_record A "$IPV4"
+        nvram set cloudflare_last_ipv4="$IPV4"
+    fi
+
+    if [ "$IPV6" != "$LAST_IPV6" ]; then
+        update_record AAAA "$IPV6"
+        nvram set cloudflare_last_ipv6="$IPV6"
+    fi
+
+    nvram set cloudflare_last_update="$(date '+%Y-%m-%d %H:%M:%S')"
+    nvram commit
+}
+
+daemon() {
+    log "Cloudflare DDNS daemon started"
     while true; do
-        IP="$(get_wan_ip)"
-        [ -z "$IP" ] && sleep "$INTERVAL" && continue
-
-        LAST_IP="$(nvram get cloudflare_last_ip)"
-
-        if [ "$IP" != "$LAST_IP" ]; then
-            if update_record "$IP"; then
-                nvram set cloudflare_last_ip="$IP"
-                nvram set cloudflare_last_time="$(date '+%F %T')"
-                nvram commit
-                log "Updated $FQDN -> $IP"
-            else
-                log "Failed to update $FQDN"
-            fi
-        fi
-
+        run_ddns
         sleep "$INTERVAL"
     done
 }
 
-start() {
-    [ "$ENABLE" != "1" ] && exit 0
-    [ -f "$PID" ] && exit 0
-
-    ddns_loop &
-    echo $! > "$PID"
-}
-
-stop() {
-    [ -f "$PID" ] && kill "$(cat $PID)" 2>/dev/null
-    rm -f "$PID"
-}
+################################
+# Control
+################################
 
 case "$1" in
-    start) start ;;
-    stop) stop ;;
-    restart)
-        stop
-        sleep 1
-        start
-        ;;
-    *)
-        echo "Usage: $BIN {start|stop|restart}"
-        ;;
+start)
+    [ "$CF_ENABLE" != "1" ] && exit 0
+    daemon &
+    ;;
+stop)
+    killall "$BIN_NAME" 2>/dev/null
+    ;;
+restart)
+    killall "$BIN_NAME" 2>/dev/null
+    sleep 1
+    daemon &
+    ;;
+*)
+    echo "Usage: $BIN_NAME {start|stop|restart}"
+    ;;
 esac
+
 
 
