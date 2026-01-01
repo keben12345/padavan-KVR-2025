@@ -752,7 +752,7 @@ $j(document).ready(function(){
                                     </tr>
                                     <tr id="row_ata_pool" style="display:none">
                                         <td width="30%">
-                                            <div id="sataIcon"></div>
+                                            <div id="sataIcon" class="big-icons big-icons-ata"></div>
                                             <div style="position: absolute; margin-top: -47px; margin-left: 50px;"><div id="sataDec"></div></div>
                                             <div class="arrow-right" id="arrow-ata"><img src="/bootstrap/img/arrow-right.png"></div>
                                         </td>
