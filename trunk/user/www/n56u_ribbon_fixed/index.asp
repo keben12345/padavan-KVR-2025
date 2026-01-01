@@ -259,7 +259,7 @@ function show_ata_pool(){
 	for(i = 0; i < all_disks.length; ++i){
 		if(foreign_disk_interface_names()[i] == "1000"){
 			dev_found = 1;
-			ata_html(i);
+			ata_html();
 			break;
 		}
 	}
@@ -752,7 +752,7 @@ $j(document).ready(function(){
                                     </tr>
                                     <tr id="row_ata_pool" style="display:none">
                                         <td width="30%">
-                                            <div id="sataIcon" class="big-icons big-icons-ata"></div>
+                                            <div id="sataIcon"></div>
                                             <div style="position: absolute; margin-top: -47px; margin-left: 50px;"><div id="sataDec"></div></div>
                                             <div class="arrow-right" id="arrow-ata"><img src="/bootstrap/img/arrow-right.png"></div>
                                         </td>
