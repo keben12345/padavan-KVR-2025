@@ -363,7 +363,15 @@ li div.accordion a {
 .big-icons-globe{ background-position: 0 0; width: 48px; height: 48px; }
 .big-icons-laptop{ background-position: 0 -114px; width: 48px; height: 48px; }
 .big-icons-router{ background-position: 0 -228px; width: 48px; height: 48px; }
-.big-icons-usb{ background-position: 0 -342px; width: 48px; height: 48px; }
+# .big-icons-usb{ background-position: 0 -342px; width: 48px; height: 48px; }
+/* === Old Padavan Home USB / SATA Icon (FINAL FIX) === */
+.big-icons-usb {
+    width: 64px;
+    height: 64px;
+    background-image: url("../img/big-icons.png");
+    background-repeat: no-repeat;
+    background-position: -128px 0;
+}
 .big-icons-usbhdd{ background-position: 0 -456px; width: 48px; height: 48px; }
 .big-icons-printer{ background-position: 0 -570px; width: 48px; height: 48px; }
 .big-icons-modem{ background-position: 0 -684px; width: 48px; height: 48px; }
