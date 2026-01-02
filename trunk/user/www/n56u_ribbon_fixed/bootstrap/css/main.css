@@ -637,59 +637,107 @@ textarea[readonly] {
     border-radius: 3px 0 0 3px;
 }
 /*********************************************************
- * Classic Padavan Home UI – FINAL STABLE VERSION
- * Purpose:
- *  - Remove new (2025) home icon containers
- *  - Restore classic Padavan big-icons layout
- *  - Fix duplicated icons / stretched height
- *  - Keep all click actions functional
+ * Old Padavan UI – Clean Home Icons Layout (2025 safe)
+ * Only override layout, NOT logic
  *********************************************************/
 
-
-/* ======================================================
- * 1. Completely disable NEW home icon wrappers
- * ====================================================== */
-.home-icon-wrap,
-.home-icon-bg,
-.home-icon-circle,
-.home-icons-bg,
-.home-icons-wrapper,
-.icon-circle,
-.icon-bg {
-    display: none !important;
+/* === Home big icon container === */
+#homeIcons,
+#homeIcons ul,
+#homeIcons li {
+    margin: 0;
+    padding: 0;
+    list-style: none;
 }
 
-
-/* ======================================================
- * 2. Restore classic Padavan big-icons ONLY
- * ====================================================== */
-#homeIcons li > .big-icons {
-    display: block !important;
+/* === Each icon block === */
+.big-icons {
+    position: relative;
     width: 48px;
     height: 48px;
-    margin: 0 auto;
+    margin: 14px auto;
+    cursor: pointer;
+    display: block;
+    background-repeat: no-repeat;
     background-size: auto;
 }
 
-
-/* ======================================================
- * 3. Fix list item layout (remove stretching)
- * ====================================================== */
-#homeIcons li {
-    height: auto !important;
-    min-height: 64px;
-    padding: 8px 0 6px 0;
-    margin-bottom: 10px;
-
-    background: none !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
+/* Remove new UI pseudo elements */
+.big-icons::before,
+.big-icons::after {
+    content: none !important;
+    display: none !important;
 }
 
+/* === Disable curved separators / shadows === */
+.home-circle,
+.home-curve,
+.icon-shadow,
+.icon-mask {
+    display: none !important;
+}
 
-/* ======================================================
- * 4. Remove all decorative pseudo elements
- * ====================================================== */
+/* === Fix click area === */
+.big-icons,
+.big-icons * {
+    pointer-events: auto;
+}
+
+/* === Prevent overlay from blocking SATA === */
+#deviceIcon_0 {
+    z-index: 5;
+}
+
+/* === Old Padavan spacing === */
+#homeIcons li {
+    height: auto;
+    min-height: 60px;
+}
+
+/* === SATA / AiDisk icon mapping === */
+/* Force classic USB-HDD style */
+.big-icons-sata,
+.big-icons-aidisk {
+    background-position: 0 -456px; /* same as usbhdd */
+}
+
+/* Active state */
+.big-icons-sata-active,
+.big-icons-aidisk-active {
+    background-position: 0 -513px;
+}
+
+/* === Remove number badge offset bug === */
+.iconNo {
+    position: absolute;
+    right: -6px;
+    top: -6px;
+}
+
+/* === Ensure hover works === */
+.big-icons:hover {
+    filter: brightness(1.15);
+}
+
+/*********************************************************
+ * END Old Padavan UI Fix
+ *********************************************************/
+
+/*********************************************************
+ * Padavan 2025 UI Cleanup Layer
+ * Remove visual junk ONLY – logic untouched
+ *********************************************************/
+
+/* Remove all new UI decorative layers */
+.home-circle,
+.home-curve,
+.icon-shadow,
+.icon-mask,
+.home-icons-bg {
+    display: none !important;
+}
+
+/* Kill pseudo decorations */
 #homeIcons li::before,
 #homeIcons li::after,
 .big-icons::before,
@@ -698,36 +746,34 @@ textarea[readonly] {
     display: none !important;
 }
 
-
-/* ======================================================
- * 5. Text alignment (classic Padavan style)
- * ====================================================== */
-#homeIcons li span,
-#homeIcons li label {
-    display: block;
-    margin-top: 4px;
-    text-align: center;
-    font-size: 12px;
+/* Normalize icon container */
+#homeIcons li {
+    background: none !important;
+    box-shadow: none !important;
+    border: none !important;
 }
 
-
-/* ======================================================
- * 6. Cursor & click behavior
- * ====================================================== */
-#homeIcons li,
-#homeIcons li * {
-    cursor: pointer;
+/* Remove curved separators */
+#homeIcons li hr,
+.icon-divider {
+    display: none !important;
 }
 
-
-/* ======================================================
- * 7. Optional: tighter vertical rhythm (old Padavan feel)
- * ====================================================== */
+/* Fix spacing to classic Padavan */
 #homeIcons {
-    padding-top: 4px;
+    padding-top: 8px;
 }
 
+#homeIcons li {
+    margin-bottom: 14px;
+}
+
+/* Disable fancy hover effects */
+.big-icons {
+    transition: none !important;
+    filter: none !important;
+}
 
 /*********************************************************
- * END – Classic Padavan Home UI (Final)
+ * END Padavan 2025 Cleanup
  *********************************************************/
