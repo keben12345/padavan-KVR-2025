@@ -636,39 +636,63 @@ textarea[readonly] {
 .input-append input {
     border-radius: 3px 0 0 3px;
 }
-/* ===== FINAL FIX: SATA / AiDisk icon click area ===== */
+/* ======================================================
+ * FINAL CLEAN FIX
+ * Old Padavan Home Icons Layout (Keep 2025 functions)
+ * ====================================================== */
 
-/* 统一 big-icons 实体尺寸（与 2025 首页布局一致） */
+/* 1. 统一老 Padavan 大图标尺寸（关键） */
 .big-icons {
-    display: inline-block !important;
-    position: relative !important;
-    width: 64px;
-    height: 64px;
+    width: 110px;
+    height: 110px;
+    background-repeat: no-repeat;
+    overflow: hidden;              /* 裁掉 2025 多余行 */
+    cursor: pointer;
 }
 
-/* 修复 USB / SATA 图标点击区错位 */
-.big-icons-usb,
-.big-icons-usb-active {
-    width: 64px;
-    height: 64px;
-    background-position: center !important;
+/* 2. 强制使用老 Padavan sprite 第一行 */
+.big-icons-laptop {
+    background-position: 0 0 !important;
 }
 
-/* 防止父容器裁剪点击区域 */
+.big-icons-laptop-active {
+    background-position: 0 -110px !important;
+}
+
+/* 3. 客户端图标 */
+.big-icons-desktop {
+    background-position: -110px 0 !important;
+}
+
+.big-icons-desktop-active {
+    background-position: -110px -110px !important;
+}
+
+/* 4. AiDisk / SATA（老 Padavan 硬盘图标） */
+.big-icons-usb {
+    background-position: -220px 0 !important;
+}
+
+.big-icons-usb-active,
+.big-icons-usb:hover {
+    background-position: -220px -110px !important;
+}
+
+/* 5. 永久屏蔽 2025 新 HDD / SATA 叠加层 */
+.big-icons::before,
+.big-icons::after {
+    display: none !important;
+}
+
+/* 6. 移除设备数量 / 状态圆点 */
+.iconNo {
+    display: none !important;
+}
+
+/* 7. 防止父容器裁剪点击区域 */
 #iconArea,
 .icon-area,
 .box {
     overflow: visible !important;
 }
 
-/* 确保 <a> 有实体高度 */
-#iconArea a {
-    display: inline-block;
-    width: 64px;
-    height: 64px;
-}
-
-/* 禁止 iconNo 挡点击 */
-.iconNo {
-    pointer-events: none !important;
-}
