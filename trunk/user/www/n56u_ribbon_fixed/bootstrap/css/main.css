@@ -636,63 +636,98 @@ textarea[readonly] {
 .input-append input {
     border-radius: 3px 0 0 3px;
 }
-/* ======================================================
- * FINAL CLEAN FIX
- * Old Padavan Home Icons Layout (Keep 2025 functions)
- * ====================================================== */
+/*********************************************************
+ * Classic Padavan Home UI – FINAL STABLE VERSION
+ * Purpose:
+ *  - Remove new (2025) home icon containers
+ *  - Restore classic Padavan big-icons layout
+ *  - Fix duplicated icons / stretched height
+ *  - Keep all click actions functional
+ *********************************************************/
 
-/* 1. 统一老 Padavan 大图标尺寸（关键） */
-.big-icons {
-    width: 110px;
-    height: 110px;
-    background-repeat: no-repeat;
-    overflow: hidden;              /* 裁掉 2025 多余行 */
+
+/* ======================================================
+ * 1. Completely disable NEW home icon wrappers
+ * ====================================================== */
+.home-icon-wrap,
+.home-icon-bg,
+.home-icon-circle,
+.home-icons-bg,
+.home-icons-wrapper,
+.icon-circle,
+.icon-bg {
+    display: none !important;
+}
+
+
+/* ======================================================
+ * 2. Restore classic Padavan big-icons ONLY
+ * ====================================================== */
+#homeIcons li > .big-icons {
+    display: block !important;
+    width: 48px;
+    height: 48px;
+    margin: 0 auto;
+    background-size: auto;
+}
+
+
+/* ======================================================
+ * 3. Fix list item layout (remove stretching)
+ * ====================================================== */
+#homeIcons li {
+    height: auto !important;
+    min-height: 64px;
+    padding: 8px 0 6px 0;
+    margin-bottom: 10px;
+
+    background: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+}
+
+
+/* ======================================================
+ * 4. Remove all decorative pseudo elements
+ * ====================================================== */
+#homeIcons li::before,
+#homeIcons li::after,
+.big-icons::before,
+.big-icons::after {
+    content: none !important;
+    display: none !important;
+}
+
+
+/* ======================================================
+ * 5. Text alignment (classic Padavan style)
+ * ====================================================== */
+#homeIcons li span,
+#homeIcons li label {
+    display: block;
+    margin-top: 4px;
+    text-align: center;
+    font-size: 12px;
+}
+
+
+/* ======================================================
+ * 6. Cursor & click behavior
+ * ====================================================== */
+#homeIcons li,
+#homeIcons li * {
     cursor: pointer;
 }
 
-/* 2. 强制使用老 Padavan sprite 第一行 */
-.big-icons-laptop {
-    background-position: 0 0 !important;
+
+/* ======================================================
+ * 7. Optional: tighter vertical rhythm (old Padavan feel)
+ * ====================================================== */
+#homeIcons {
+    padding-top: 4px;
 }
 
-.big-icons-laptop-active {
-    background-position: 0 -110px !important;
-}
 
-/* 3. 客户端图标 */
-.big-icons-desktop {
-    background-position: -110px 0 !important;
-}
-
-.big-icons-desktop-active {
-    background-position: -110px -110px !important;
-}
-
-/* 4. AiDisk / SATA（老 Padavan 硬盘图标） */
-.big-icons-usb {
-    background-position: -220px 0 !important;
-}
-
-.big-icons-usb-active,
-.big-icons-usb:hover {
-    background-position: -220px -110px !important;
-}
-
-/* 5. 永久屏蔽 2025 新 HDD / SATA 叠加层 */
-.big-icons::before,
-.big-icons::after {
-    display: none !important;
-}
-
-/* 6. 移除设备数量 / 状态圆点 */
-.iconNo {
-    display: none !important;
-}
-
-/* 7. 防止父容器裁剪点击区域 */
-#iconArea,
-.icon-area,
-.box {
-    overflow: visible !important;
-}
-
+/*********************************************************
+ * END – Classic Padavan Home UI (Final)
+ *********************************************************/
