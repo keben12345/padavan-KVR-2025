@@ -636,3 +636,39 @@ textarea[readonly] {
 .input-append input {
     border-radius: 3px 0 0 3px;
 }
+/* ===== FINAL FIX: SATA / AiDisk icon click area ===== */
+
+/* 统一 big-icons 实体尺寸（与 2025 首页布局一致） */
+.big-icons {
+    display: inline-block !important;
+    position: relative !important;
+    width: 64px;
+    height: 64px;
+}
+
+/* 修复 USB / SATA 图标点击区错位 */
+.big-icons-usb,
+.big-icons-usb-active {
+    width: 64px;
+    height: 64px;
+    background-position: center !important;
+}
+
+/* 防止父容器裁剪点击区域 */
+#iconArea,
+.icon-area,
+.box {
+    overflow: visible !important;
+}
+
+/* 确保 <a> 有实体高度 */
+#iconArea a {
+    display: inline-block;
+    width: 64px;
+    height: 64px;
+}
+
+/* 禁止 iconNo 挡点击 */
+.iconNo {
+    pointer-events: none !important;
+}
