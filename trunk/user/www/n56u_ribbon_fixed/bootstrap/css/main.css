@@ -364,11 +364,11 @@ li div.accordion a {
 .big-icons-laptop{ background-position: 0 -114px; width: 48px; height: 48px; }
 .big-icons-router{ background-position: 0 -228px; width: 48px; height: 48px; }
 # .big-icons-usb{ background-position: 0 -342px; width: 48px; height: 48px; }
-/* === Old Padavan Home USB / SATA Icon (FINAL FIX) === */
+/* === Old Padavan Home USB / SATA Icon (FINAL & CORRECT PATH) === */
 .big-icons-usb {
     width: 64px;
     height: 64px;
-    background-image: url("../img/big-icons.png");
+    background-image: url("../img/icons/big-icon.png");
     background-repeat: no-repeat;
     background-position: -128px 0;
 }
