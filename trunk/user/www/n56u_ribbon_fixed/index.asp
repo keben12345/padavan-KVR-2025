@@ -245,28 +245,27 @@ function show_usb_ports(){
 }
 
 function show_ata_pool(){
-    var i;
+	var i;
+	var dev_found = 0;
 
-    /* 始终显示 SATA 行（和老 Padavan 一致） */
-    $("row_ata_pool").style.display = "";
+	if (typeof(get_ata_support) !== 'function')
+		return;
 
-    for(i = 0; i < all_disks.length; ++i){
-        /* ① 原生 ATA / SATA */
-        if(foreign_disk_interface_names()[i] == "1000"){
-            ata_html(i);
-            return;
-        }
+	if (!get_ata_support())
+		return;
 
-        /* ② USB-SATA / 内置盘（小娱 C1 等） */
-        if(foreign_disk_interface_names()[i] == "1" ||
-           foreign_disk_interface_names()[i] == "2"){
-            ata_html(i);
-            return;
-        }
-    }
+	$("row_ata_pool").style.display = "";
 
-    /* 没有任何磁盘才显示 no device */
-    no_device_html("sataIcon");
+	for(i = 0; i < all_disks.length; ++i){
+		if(foreign_disk_interface_names()[i] == "1000"){
+			dev_found = 1;
+			ata_html(i);
+			break;
+		}
+	}
+
+	if (!dev_found)
+		no_device_html("sataIcon");
 }
 
 function show_mmc_card(){
