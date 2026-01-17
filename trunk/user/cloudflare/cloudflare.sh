@@ -1,12 +1,6 @@
 #!/bin/sh
 # Cloudflare DDNS for Padavan
-# Final Stable Version
-# - Fixed success detection
-# - Auto cleanup duplicate A / AAAA records
-# - IPv4 + IPv6 sync (ppp0)
-# - curl timeout protection
-# - Real PID validation (no zombie / multi-daemon)
-# - Long-term stable daemon
+# Ultra Stable Daemon Edition
 
 BIN_NAME="cloudflare.sh"
 LOG_FILE="/tmp/cloudflare.log"
@@ -56,7 +50,7 @@ api_success() {
 }
 
 get_zone_id() {
-    RESP=$(cf_api "https://api.cloudflare.com/client/v4/zones?name=$DOMAIN")
+    RESP=$(cf_api "https://api.cloudflare.com/client/v4/zones?name=$DOMAIN") || return 1
     api_success "$RESP" || return 1
     echo "$RESP" | sed -n 's/.*"id":"\([^"]*\)".*"name":"'"$DOMAIN"'".*/\1/p'
 }
@@ -64,7 +58,7 @@ get_zone_id() {
 get_record_ids() {
     TYPE="$1"
     RESP=$(cf_api \
-        "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?type=$TYPE&name=$FQDN")
+        "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?type=$TYPE&name=$FQDN") || return 1
     api_success "$RESP" || return 1
     echo "$RESP" | sed -n 's/.*"id":"\([^"]*\)".*"content":"\([^"]*\)".*/\1 \2/p'
 }
@@ -84,7 +78,6 @@ update_record() {
         return 1
     fi
 
-    log "Creating DNS record $FQDN ($TYPE)"
     RESP=$(cf_api_json -X POST \
         "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
         --data "{\"type\":\"$TYPE\",\"name\":\"$FQDN\",\"content\":\"$IP\",\"ttl\":1,\"proxied\":false}")
@@ -97,68 +90,49 @@ cleanup_duplicates() {
 
     IDS=$(get_record_ids "$TYPE") || return
 
-    KEEP_ID=""
     echo "$IDS" | while read ID IP; do
-        [ "$IP" = "$KEEP_IP" ] && KEEP_ID="$ID"
-        echo "$ID $IP"
-    done > /tmp/cf_${TYPE}_dup
-
-    [ -z "$KEEP_ID" ] && KEEP_ID=$(head -n1 /tmp/cf_${TYPE}_dup | awk '{print $1}')
-
-    while read ID IP; do
-        [ "$ID" = "$KEEP_ID" ] && continue
+        [ "$IP" != "$KEEP_IP" ] && \
         curl $CURL_OPT -X DELETE \
             -H "Authorization: Bearer $TOKEN" \
-            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$ID" >/dev/null
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$ID" >/dev/null && \
         log "Deleted duplicate $TYPE record ($IP)"
-    done < /tmp/cf_${TYPE}_dup
-
-    rm -f /tmp/cf_${TYPE}_dup
+    done
 }
 
 ddns_once() {
     ZONE_ID=$(get_zone_id)
-    [ -z "$ZONE_ID" ] && { log "Zone not found: $DOMAIN"; return; }
+    [ -z "$ZONE_ID" ] && return
 
     IPV4=$(get_ipv4)
     IPV6=$(get_ipv6)
 
-    if [ -n "$IPV4" ] && [ "$IPV4" != "$LAST_IPV4" ]; then
-        if update_record "A" "$IPV4"; then
-            cleanup_duplicates "A" "$IPV4"
-            nvram set cloudflare_last_ip="$IPV4"
-            nvram commit
-            LAST_IPV4="$IPV4"
-            log "Updated $FQDN -> $IPV4"
-        fi
-    fi
+    [ -n "$IPV4" ] && [ "$IPV4" != "$LAST_IPV4" ] && \
+    update_record "A" "$IPV4" && \
+    cleanup_duplicates "A" "$IPV4" && \
+    nvram set cloudflare_last_ip="$IPV4" && \
+    LAST_IPV4="$IPV4" && \
+    log "Updated $FQDN -> $IPV4"
 
-    if [ -n "$IPV6" ] && [ "$IPV6" != "$LAST_IPV6" ]; then
-        if update_record "AAAA" "$IPV6"; then
-            cleanup_duplicates "AAAA" "$IPV6"
-            nvram set cloudflare_last_ipv6="$IPV6"
-            nvram commit
-            LAST_IPV6="$IPV6"
-            log "Updated $FQDN -> $IPV6"
-        fi
-    fi
+    [ -n "$IPV6" ] && [ "$IPV6" != "$LAST_IPV6" ] && \
+    update_record "AAAA" "$IPV6" && \
+    cleanup_duplicates "AAAA" "$IPV6" && \
+    nvram set cloudflare_last_ipv6="$IPV6" && \
+    LAST_IPV6="$IPV6" && \
+    log "Updated $FQDN -> $IPV6"
 }
 
 daemon() {
     log "Cloudflare DDNS daemon started (pid $$)"
     while true; do
-        ddns_once
-        sleep "$INTERVAL"
+        ddns_once || true
+        log "Heartbeat: daemon alive"
+        sleep "$INTERVAL" || sleep 600
     done
 }
 
 check_pid() {
-    if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        kill -0 "$PID" 2>/dev/null && return 0
-        rm -f "$PID_FILE"
-    fi
-    return 1
+    [ -f "$PID_FILE" ] || return 1
+    kill -0 "$(cat "$PID_FILE")" 2>/dev/null
 }
 
 case "$1" in
