@@ -1,12 +1,11 @@
 #!/bin/sh
-# Cloudflare DDNS for Padavan (PPPoE optimized)
-# Final stable build version
+# Cloudflare DDNS for Padavan
+# Stable daemon edition (nohup + heartbeat)
 
 BIN_NAME="cloudflare.sh"
 LOG_FILE="/tmp/cloudflare.log"
 PID_FILE="/var/run/cloudflare.pid"
 
-# ---------------- Log ----------------
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
 }
@@ -24,14 +23,12 @@ LAST_IPV6=$(nvram get cloudflare_last_ipv6)
 FQDN="${HOST}.${DOMAIN}"
 
 # ---------------- IP Detect ----------------
-# PPPoE IPv4
 get_ipv4() {
     ifconfig ppp0 2>/dev/null \
         | awk '/inet addr:/ {print $2}' \
         | cut -d: -f2
 }
 
-# PPPoE IPv6
 get_ipv6() {
     ip -6 addr show dev ppp0 2>/dev/null \
         | awk '/scope global/ {print $2}' \
@@ -52,7 +49,6 @@ api_success() {
     echo "$1" | grep -q '"success"[[:space:]]*:[[:space:]]*true'
 }
 
-# ---------------- Zone / Record ----------------
 get_zone_id() {
     RESP=$(cf_api "https://api.cloudflare.com/client/v4/zones?name=$DOMAIN")
     api_success "$RESP" || return 1
@@ -97,7 +93,6 @@ cleanup_duplicates() {
     [ -z "$IDS" ] && return
 
     KEEP_ID=$(echo "$IDS" | awk -v ip="$KEEP_IP" '$2==ip {print $1; exit}')
-
     [ -z "$KEEP_ID" ] && KEEP_ID=$(echo "$IDS" | head -n1 | awk '{print $1}')
 
     echo "$IDS" | while read ID IP; do
@@ -109,23 +104,21 @@ cleanup_duplicates() {
     done
 }
 
-# ---------------- Core ----------------
 ddns_once() {
     ZONE_ID=$(get_zone_id)
-    [ -z "$ZONE_ID" ] && { log "ERROR: Zone not found: $DOMAIN"; return; }
+    [ -z "$ZONE_ID" ] && { log "ERROR: Zone not found"; return; }
 
     IPV4=$(get_ipv4)
     IPV6=$(get_ipv6)
 
-    if [ -z "$IPV4" ]; then
-        log "ERROR: Failed to get WAN IPv4"
-    fi
+    log "Heartbeat: ipv4=$IPV4 ipv6=$IPV6"
 
     if [ -n "$IPV4" ] && [ "$IPV4" != "$LAST_IPV4" ]; then
         if update_record "A" "$IPV4"; then
             cleanup_duplicates "A" "$IPV4"
             nvram set cloudflare_last_ip="$IPV4"
             nvram commit
+            LAST_IPV4="$IPV4"
             log "Updated A $FQDN -> $IPV4"
         fi
     fi
@@ -135,42 +128,50 @@ ddns_once() {
             cleanup_duplicates "AAAA" "$IPV6"
             nvram set cloudflare_last_ipv6="$IPV6"
             nvram commit
+            LAST_IPV6="$IPV6"
             log "Updated AAAA $FQDN -> $IPV6"
         fi
     fi
 }
 
-daemon() {
-    log "Cloudflare DDNS daemon started (pid $$), interval=${INTERVAL}s"
+daemon_loop() {
+    log "Cloudflare DDNS daemon running (pid $$), interval=${INTERVAL}s"
     while true; do
         ddns_once
         sleep "$INTERVAL"
     done
 }
 
-# ---------------- Service ----------------
+start_daemon() {
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat $PID_FILE)" 2>/dev/null; then
+        exit 0
+    fi
+
+    nohup sh -c "daemon_loop" </dev/null >>"$LOG_FILE" 2>&1 &
+    echo $! > "$PID_FILE"
+}
+
+stop_daemon() {
+    [ -f "$PID_FILE" ] && kill "$(cat $PID_FILE)" 2>/dev/null
+    rm -f "$PID_FILE"
+}
+
 case "$1" in
     start)
         [ "$ENABLE" != "1" ] && exit 0
-
-        if [ -f "$PID_FILE" ] && kill -0 "$(cat $PID_FILE)" 2>/dev/null; then
-            exit 0
-        fi
-
-        daemon &
-        echo $! > "$PID_FILE"
+        start_daemon
         ;;
     stop)
-        [ -f "$PID_FILE" ] && kill "$(cat $PID_FILE)" 2>/dev/null
-        rm -f "$PID_FILE"
+        stop_daemon
         ;;
     restart)
-        $0 stop
+        stop_daemon
         sleep 1
-        $0 start
+        start_daemon
         ;;
     *)
         echo "Usage: $BIN_NAME {start|stop|restart}"
         ;;
 esac
+
 
