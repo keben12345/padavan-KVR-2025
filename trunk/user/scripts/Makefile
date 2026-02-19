@@ -13,7 +13,7 @@ romfs:
 	$(ROMFSINST) -p +x $(THISDIR)/check_disk_size /sbin/check_disk_size
 	$(ROMFSINST) -p +x $(THISDIR)/copyscripts.sh /usr/bin/copyscripts.sh
 	$(ROMFSINST) -p +x $(THISDIR)/autostart.sh /usr/bin/autostart.sh
-    $(ROMFSINST) -p +x $(THISDIR)/wan_up.sh /etc_ro/wan_up.sh
+    # $(ROMFSINST) -p +x $(THISDIR)/wan_up.sh /etc_ro/wan_up.sh
 	$(ROMFSINST) -p +x $(THISDIR)/ap_script.sh /etc_ro/ap_script.sh
 	$(ROMFSINST) -p +x $(THISDIR)/sh_ezscript.sh /etc_ro/sh_ezscript.sh
 	$(ROMFSINST) -p +x $(THISDIR)/sysinfo.sh /etc_ro/sysinfo.sh
