@@ -1,151 +1,186 @@
 #!/bin/sh
-# Cloudflare DDNS for Padavan (Optimized Stable Edition)
-# Only update when IP changed
-# Supports PPPoE / DHCP
-# Heartbeat + Lock + Auto recovery
+# Cloudflare DDNS Ultimate Stable Edition for Padavan
+# PPPoE Safe / WAN Hook Safe / No Missed Updates
 
-BIN_NAME="cloudflare.sh"
-LOG_FILE="/tmp/cloudflare.log"
+BIN="cloudflare.sh"
+LOG="/tmp/cloudflare.log"
 PID_FILE="/var/run/cloudflare.pid"
+ZONE_CACHE="/tmp/cloudflare_zoneid"
 
+CURL_OPT="-k -s --connect-timeout 5 --max-time 15"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
+}
+
+# ---------------- NVRAM ----------------
 ENABLE=$(nvram get cloudflare_enable)
 INTERVAL=$(nvram get cloudflare_interval)
 TOKEN=$(nvram get cloudflare_token)
 DOMAIN=$(nvram get cloudflare_domain)
 HOST=$(nvram get cloudflare_host)
 
+LAST_IPV4=$(nvram get cloudflare_last_ip)
+LAST_IPV6=$(nvram get cloudflare_last_ipv6)
+
 [ -z "$INTERVAL" ] && INTERVAL=600
+FQDN="${HOST}.${DOMAIN}"
 
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
+# ---------------- IP Detection ----------------
+get_ipv4() {
+    ip addr show dev ppp0 2>/dev/null \
+        | awk '/inet /{print $2}' \
+        | cut -d/ -f1
 }
 
-# -------------------------------
-# Get WAN IPv4 (PPPoE first)
-# -------------------------------
-get_wan_ip() {
-    local ip
-
-    ip=$(ifconfig ppp0 2>/dev/null | awk '/inet addr/ {print $2}' | cut -d: -f2)
-    [ -n "$ip" ] && echo "$ip" && return 0
-
-    ip=$(nvram get wan_ipaddr)
-    [ "$ip" != "0.0.0.0" ] && echo "$ip" && return 0
-
-    return 1
+get_ipv6() {
+    ip -6 addr show dev ppp0 2>/dev/null \
+        | awk '/inet6.*scope global/{print $2}' \
+        | cut -d/ -f1 | head -n1
 }
 
-# -------------------------------
-# Cloudflare API Wrapper
-# -------------------------------
+# ---------------- Cloudflare API ----------------
 cf_api() {
-    curl -s -m 15 \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "Content-Type: application/json" \
-        "$@"
+    curl $CURL_OPT -H "Authorization: Bearer $TOKEN" "$@"
 }
 
-# -------------------------------
-# Update DNS Record
-# -------------------------------
-update_record() {
-    local TYPE="$1"
-    local IP="$2"
-    local FQDN="$HOST.$DOMAIN"
+cf_api_json() {
+    curl $CURL_OPT \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" "$@"
+}
 
-    # Get Zone ID
-    local ZONE_ID
-    ZONE_ID=$(cf_api "https://api.cloudflare.com/client/v4/zones?name=$DOMAIN" \
-        | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+api_success() {
+    echo "$1" | grep -q '"success":[[:space:]]*true'
+}
 
-    [ -z "$ZONE_ID" ] && log "ERROR: Failed to get Zone ID" && return 1
+get_zone_id() {
 
-    # Get Record ID
-    local RID
-    RID=$(cf_api \
-        "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?type=$TYPE&name=$FQDN" \
-        | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
-
-    if [ -n "$RID" ]; then
-        # Update
-        cf_api -X PUT \
-            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$RID" \
-            --data "{\"type\":\"$TYPE\",\"name\":\"$FQDN\",\"content\":\"$IP\",\"ttl\":120,\"proxied\":false}" \
-            >/dev/null
-    else
-        # Create
-        cf_api -X POST \
-            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
-            --data "{\"type\":\"$TYPE\",\"name\":\"$FQDN\",\"content\":\"$IP\",\"ttl\":120,\"proxied\":false}" \
-            >/dev/null
+    if [ -f "$ZONE_CACHE" ]; then
+        cat "$ZONE_CACHE"
+        return
     fi
 
-    log "Updated $TYPE -> $IP"
+    RESP=$(cf_api "https://api.cloudflare.com/client/v4/zones?name=$DOMAIN")
+    api_success "$RESP" || return 1
+
+    ZONE_ID=$(echo "$RESP" | sed -n 's/.*"id":"\([^"]*\)".*"name":"'"$DOMAIN"'".*/\1/p')
+    [ -n "$ZONE_ID" ] && echo "$ZONE_ID" > "$ZONE_CACHE"
+    echo "$ZONE_ID"
 }
 
-# -------------------------------
-# Daemon loop
-# -------------------------------
-daemon_loop() {
-    log "Cloudflare DDNS daemon started (pid $$), interval=${INTERVAL}s"
+get_record_id() {
+    TYPE="$1"
+    RESP=$(cf_api \
+        "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?type=$TYPE&name=$FQDN")
 
-    LAST_IP=""
+    api_success "$RESP" || return 1
 
-    while true; do
-        WAN_IP=$(get_wan_ip)
+    echo "$RESP" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -n1
+}
 
-        if [ -z "$WAN_IP" ]; then
-            log "ERROR: Failed to get WAN IP"
-        else
-            if [ "$WAN_IP" != "$LAST_IP" ]; then
-                log "IP changed: $LAST_IP -> $WAN_IP"
-                update_record "A" "$WAN_IP" && LAST_IP="$WAN_IP"
+update_record() {
+
+    TYPE="$1"
+    IP="$2"
+
+    RID=$(get_record_id "$TYPE")
+
+    if [ -n "$RID" ]; then
+        RESP=$(cf_api_json -X PUT \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$RID" \
+            --data "{\"type\":\"$TYPE\",\"name\":\"$FQDN\",\"content\":\"$IP\",\"ttl\":120,\"proxied\":false}")
+    else
+        RESP=$(cf_api_json -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+            --data "{\"type\":\"$TYPE\",\"name\":\"$FQDN\",\"content\":\"$IP\",\"ttl\":120,\"proxied\":false}")
+    fi
+
+    api_success "$RESP"
+}
+
+# ---------------- DDNS Core ----------------
+ddns_once() {
+
+    ZONE_ID=$(get_zone_id)
+    [ -z "$ZONE_ID" ] && { log "Zone lookup failed"; return; }
+
+    IPV4=$(get_ipv4)
+    IPV6=$(get_ipv6)
+
+    # ----- IPv4 -----
+    if [ -n "$IPV4" ]; then
+        if [ "$IPV4" != "$LAST_IPV4" ]; then
+            log "IPv4 changed: $LAST_IPV4 -> $IPV4"
+            if update_record "A" "$IPV4"; then
+                nvram set cloudflare_last_ip="$IPV4"
+                nvram commit
+                LAST_IPV4="$IPV4"
+                log "Updated A record -> $IPV4"
             else
-                log "Heartbeat OK (IP unchanged: $WAN_IP)"
+                log "ERROR: IPv4 update failed"
             fi
         fi
+    else
+        log "IPv4 not detected"
+    fi
 
+    # ----- IPv6 -----
+    if [ -n "$IPV6" ]; then
+        if [ "$IPV6" != "$LAST_IPV6" ]; then
+            log "IPv6 changed: $LAST_IPV6 -> $IPV6"
+            if update_record "AAAA" "$IPV6"; then
+                nvram set cloudflare_last_ipv6="$IPV6"
+                nvram commit
+                LAST_IPV6="$IPV6"
+                log "Updated AAAA record -> $IPV6"
+            else
+                log "ERROR: IPv6 update failed"
+            fi
+        fi
+    fi
+}
+
+# ---------------- Daemon ----------------
+daemon_loop() {
+    log "Cloudflare DDNS daemon started (pid $$)"
+    while true; do
+        ddns_once
         sleep "$INTERVAL"
     done
 }
 
-# -------------------------------
-# Process Control
-# -------------------------------
-start() {
-    if pidof "$BIN_NAME" >/dev/null; then
-        echo "Already running."
-        exit 0
+# ---------------- PID ----------------
+check_pid() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        kill -0 "$PID" 2>/dev/null && return 0
+        rm -f "$PID_FILE"
     fi
-
-    nohup "$0" daemon >/dev/null 2>&1 &
+    return 1
 }
 
-stop() {
-    killall "$BIN_NAME" 2>/dev/null
-    rm -f "$PID_FILE"
-}
-
+# ---------------- Control ----------------
 case "$1" in
     start)
-        start
+        [ "$ENABLE" != "1" ] && exit 0
+        check_pid && exit 0
+        daemon_loop &
+        echo $! > "$PID_FILE"
         ;;
     stop)
-        stop
+        [ -f "$PID_FILE" ] && kill "$(cat $PID_FILE)" 2>/dev/null
+        rm -f "$PID_FILE" "$ZONE_CACHE"
         ;;
     restart)
-        stop
+        $0 stop
         sleep 1
-        start
+        $0 start
         ;;
-    daemon)
-        daemon_loop
+    once)
+        ddns_once
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart}"
+        echo "Usage: $BIN {start|stop|restart|once}"
         ;;
 esac
-
-
-
-
