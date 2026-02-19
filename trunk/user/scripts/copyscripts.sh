@@ -17,6 +17,10 @@ if [ ! -f "/etc/storage/frp_script.sh" ] ; then
 cp -rf /etc_ro/frp_script.sh /etc/storage/
 chmod 755 "/etc/storage/frp_script.sh"
 fi
+if [ ! -f "/etc/storage/wan_up.sh" ] ; then
+cp -rf /etc_ro/wan_up.sh /etc/storage/
+chmod 755 "/etc/storage/wan_up.sh"
+fi
 if [ ! -f "/etc/storage/caddy_script.sh" ] ; then
 cp -rf /etc_ro/caddy_script.sh /etc/storage/
 chmod 755 "/etc/storage/caddy_script.sh"
